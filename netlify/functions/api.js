@@ -1,81 +1,93 @@
-export const handler = async (event) => {
-  const rawPath = event.path.replace("/.netlify/functions/api", "");
-  const query = decodeURIComponent(event.queryStringParameters[""] || event.queryStringParameters.q || "").trim();
+// ✅ Lyric API sử dụng Genius (RapidAPI)
+// Hỗ trợ /home, /?=bài_hát, và tự động lấy lyric + thông tin
 
-  // /home => hướng dẫn
-  if (rawPath === "/home") {
+export const handler = async (event) => {
+  const path = event.path.replace("/.netlify/functions/api", "");
+  const query = decodeURIComponent(
+    event.queryStringParameters[""] ||
+      event.queryStringParameters.q ||
+      ""
+  ).trim();
+
+  // 📘 Hướng dẫn sử dụng (truy cập /home)
+  if (path === "/home") {
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: "🎵 Hướng dẫn sử dụng API Lyric",
+        message: "🎵 Hướng dẫn sử dụng API Lyric (Genius)",
         usage: [
           "🟢 /home → Xem hướng dẫn",
-          "🟢 /?=Shape of You → Lấy lời bài hát tiếng Anh",
-          "🟢 /?=Em của ngày hôm qua → Lấy lời bài hát tiếng Việt",
+          "🟢 /?=Shape of You → Lấy lời bài hát",
+          "🟢 /?=Hello → Tìm lời bài hát khác",
         ],
-        note: "Tự động chọn nguồn phù hợp 🇬🇧 / 🇻🇳",
-        author: "API Lyric by You 💚",
+        note: "Sử dụng Genius API (RapidAPI)",
+        author: "Lyric API by You 💚",
       }),
     };
   }
 
-  // Nếu có query
+  // ⚙️ Nếu có tên bài hát → tìm lyric
   if (query) {
     try {
-      let lyrics = "";
-      let title = query;
-      let artist = "";
+      const apiUrl = `https://genius-song-lyrics1.p.rapidapi.com/search/?q=${encodeURIComponent(
+        query
+      )}`;
 
-      // 🔹 Nếu chứa dấu tiếng Việt → gọi Zing MP3 API
-      const isVietnamese = /[àáạảãâầấậẩẫăằắặẳẵđèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹ]/i.test(query);
-      if (isVietnamese) {
-        const zingApi = `https://api-lyrics-zing.vercel.app/search?q=${encodeURIComponent(query)}`;
-        const res = await fetch(zingApi);
-        const data = await res.json();
+      const response = await fetch(apiUrl, {
+        headers: {
+          "x-rapidapi-key": "c34cb19c93mshb9c6b44976bfac8p1a895ejsnc8507442879c",
+          "x-rapidapi-host": "genius-song-lyrics1.p.rapidapi.com",
+        },
+      });
 
-        if (data && data.result && data.result.lyric) {
-          lyrics = data.result.lyric;
-          title = data.result.title || query;
-          artist = data.result.artist || "";
-        }
-      } else {
-        // 🔹 Tiếng Anh → lyrics-api.vercel.app
-        const engApi = `https://lyrics-api.vercel.app/api/lyrics?name=${encodeURIComponent(query)}`;
-        const res = await fetch(engApi);
-        const data = await res.json();
+      const data = await response.json();
 
-        if (data && data.lyrics) {
-          lyrics = data.lyrics;
-          title = data.title || query;
-          artist = data.artist || "";
-        }
+      if (!data || !data.hits || data.hits.length === 0) {
+        throw new Error("Không tìm thấy bài hát.");
       }
 
-      if (!lyrics) throw new Error("No lyrics found");
+      const song = data.hits[0].result;
+      const lyricsUrl = `https://genius-song-lyrics1.p.rapidapi.com/song/lyrics/?id=${song.id}`;
+
+      const lyricRes = await fetch(lyricsUrl, {
+        headers: {
+          "x-rapidapi-key": "c34cb19c93mshb9c6b44976bfac8p1a895ejsnc8507442879c",
+          "x-rapidapi-host": "genius-song-lyrics1.p.rapidapi.com",
+        },
+      });
+
+      const lyricData = await lyricRes.json();
 
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, artist, lyrics }),
+        body: JSON.stringify({
+          title: song.title,
+          artist: song.artist_names,
+          lyrics: lyricData.lyrics?.lyrics?.body?.plain || "Không có lyric.",
+          url: song.url,
+          thumbnail: song.header_image_url,
+        }),
       };
-    } catch {
+    } catch (error) {
       return {
         statusCode: 500,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          error: "⚠️ Không tìm thấy bài hát hoặc API đang bận.",
+          error: "⚠️ Không thể tải lời bài hát hoặc API đang bận.",
+          detail: error.message,
         }),
       };
     }
   }
 
-  // Nếu không có query
+  // ⚙️ Nếu không có query → trả hướng dẫn mặc định
   return {
     statusCode: 200,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: "🎶 Chào mừng đến với API Lyric!",
+      message: "🎶 API Lyric (Genius)",
       note: "Dùng ?=tên_bài_hát hoặc /home để xem hướng dẫn.",
     }),
   };
