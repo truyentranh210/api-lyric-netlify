@@ -1,11 +1,10 @@
-// ✅ API Lyric JSON (chạy trực tiếp trên Netlify, không cần import gì)
-
 export const handler = async (event) => {
-  const path = event.path.replace("/.netlify/functions/api", "");
+  // Lấy đường dẫn và query
+  const rawPath = event.path.replace("/.netlify/functions/api", "");
   const query = decodeURIComponent(event.queryStringParameters[""] || event.queryStringParameters.q || "").trim();
 
-  // ⚙️ Trang /home – hướng dẫn sử dụng
-  if (path === "/home" || path === "/") {
+  // ✅ Nếu người dùng truy cập /home thì trả hướng dẫn
+  if (rawPath === "/home") {
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
@@ -21,35 +20,38 @@ export const handler = async (event) => {
     };
   }
 
-  if (!query) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({
-        error: "Thiếu tham số ?=bài_hát. Hãy thử /home để xem hướng dẫn.",
-      }),
-    };
+  // ✅ Nếu có query (tức là có ?=...) thì tìm lyric
+  if (query) {
+    try {
+      const apiUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(query)}`;
+      const response = await fetch(apiUrl);
+      const data = await response.json();
+
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: query,
+          lyrics: data.lyrics || "❌ Không tìm thấy lời bài hát.",
+        }),
+      };
+    } catch {
+      return {
+        statusCode: 500,
+        body: JSON.stringify({
+          error: "⚠️ Lỗi khi tải dữ liệu bài hát hoặc API không phản hồi.",
+        }),
+      };
+    }
   }
 
-  try {
-    // 🔗 Gọi API lyric.ovh
-    const apiUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(query)}`;
-    const response = await fetch(apiUrl); // ✅ fetch có sẵn, không cần import
-    const data = await response.json();
-
-    return {
-      statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: query,
-        lyrics: data.lyrics || "Không tìm thấy lời bài hát.",
-      }),
-    };
-  } catch (err) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: "Lỗi khi tải dữ liệu bài hát hoặc API không phản hồi.",
-      }),
-    };
-  }
+  // ✅ Nếu không có query và không phải /home → tự động hướng dẫn
+  return {
+    statusCode: 200,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: "🎶 Chào mừng đến với API Lyric!",
+      note: "Dùng ?=tên_bài_hát hoặc truy cập /home để xem hướng dẫn.",
+    }),
+  };
 };
