@@ -2,7 +2,7 @@
 
 export const handler = async (event) => {
   const path = event.path.replace("/.netlify/functions/api", "");
-  const query = event.queryStringParameters[""] || event.queryStringParameters.q;
+  const query = decodeURIComponent(event.queryStringParameters[""] || event.queryStringParameters.q || "").trim();
 
   // ⚙️ Trang /home – hướng dẫn sử dụng
   if (path === "/home" || path === "/") {
