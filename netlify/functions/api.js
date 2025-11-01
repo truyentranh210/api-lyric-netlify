@@ -2,7 +2,7 @@ export const handler = async (event) => {
   const rawPath = event.path.replace("/.netlify/functions/api", "");
   const query = decodeURIComponent(event.queryStringParameters[""] || event.queryStringParameters.q || "").trim();
 
-  // /home: hướng dẫn sử dụng
+  // /home => hướng dẫn
   if (rawPath === "/home") {
     return {
       statusCode: 200,
@@ -12,33 +12,52 @@ export const handler = async (event) => {
         usage: [
           "🟢 /home → Xem hướng dẫn",
           "🟢 /?=Shape of You → Lấy lời bài hát tiếng Anh",
-          "🟢 /?=Em của ngày hôm qua → Hỗ trợ cả tiếng Việt",
+          "🟢 /?=Em của ngày hôm qua → Lấy lời bài hát tiếng Việt",
         ],
-        note: "Không cần nhập artist, API tự tìm!",
+        note: "Tự động chọn nguồn phù hợp 🇬🇧 / 🇻🇳",
         author: "API Lyric by You 💚",
       }),
     };
   }
 
-  // Có query → gọi API lyrics-api.vercel.app
+  // Nếu có query
   if (query) {
     try {
-      const apiUrl = `https://lyrics-api.vercel.app/api/lyrics?name=${encodeURIComponent(query)}`;
-      const response = await fetch(apiUrl);
-      const data = await response.json();
+      let lyrics = "";
+      let title = query;
+      let artist = "";
 
-      if (!data || !data.lyrics) {
-        throw new Error("Không có lyrics");
+      // 🔹 Nếu chứa dấu tiếng Việt → gọi Zing MP3 API
+      const isVietnamese = /[àáạảãâầấậẩẫăằắặẳẵđèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹ]/i.test(query);
+      if (isVietnamese) {
+        const zingApi = `https://api-lyrics-zing.vercel.app/search?q=${encodeURIComponent(query)}`;
+        const res = await fetch(zingApi);
+        const data = await res.json();
+
+        if (data && data.result && data.result.lyric) {
+          lyrics = data.result.lyric;
+          title = data.result.title || query;
+          artist = data.result.artist || "";
+        }
+      } else {
+        // 🔹 Tiếng Anh → lyrics-api.vercel.app
+        const engApi = `https://lyrics-api.vercel.app/api/lyrics?name=${encodeURIComponent(query)}`;
+        const res = await fetch(engApi);
+        const data = await res.json();
+
+        if (data && data.lyrics) {
+          lyrics = data.lyrics;
+          title = data.title || query;
+          artist = data.artist || "";
+        }
       }
+
+      if (!lyrics) throw new Error("No lyrics found");
 
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: data.title || query,
-          artist: data.artist || "Không rõ",
-          lyrics: data.lyrics,
-        }),
+        body: JSON.stringify({ title, artist, lyrics }),
       };
     } catch {
       return {
@@ -51,7 +70,7 @@ export const handler = async (event) => {
     }
   }
 
-  // Không có query
+  // Nếu không có query
   return {
     statusCode: 200,
     headers: { "Content-Type": "application/json" },
